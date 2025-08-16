@@ -121,14 +121,21 @@ def buscar_tus_con_endpoint_real(title_id, media_id=None, token=None, api_key=No
                             print(f"[INFO] Processing MediaID: {item_media_id} ({len(updates)} updates)")
                             
                             for update in updates:
+                                # Use original filename from API, fallback to generated name
+                                original_name = update.get('Name', '')
+                                if original_name and original_name.endswith('.tu'):
+                                    file_name = original_name
+                                else:
+                                    file_name = f"{title_id}_{update.get('Version', '1')}.tu"
+                                
                                 tu_info = {
-                                    'fileName': f"{title_id}_{update.get('Version', '1')}.tu",
+                                    'fileName': file_name,
                                     'downloadUrl': f"{RESOURCES_URL}/TitleUpdate.php?tuid={update.get('TitleUpdateID', '')}",
                                     'titleUpdateId': update.get('TitleUpdateID', ''),
                                     'version': update.get('Version', ''),
                                     'mediaId': item_media_id,
                                     'titleId': title_id,
-                                    'titleName': update.get('Name', ''),
+                                    'titleName': original_name,
                                     'size': update.get('Size', 0),
                                     'uploadDate': update.get('UploadDate', ''),
                                     'hash': update.get('hash', ''),
@@ -151,14 +158,21 @@ def buscar_tus_con_endpoint_real(title_id, media_id=None, token=None, api_key=No
                                 print(f"[INFO] Skipping TU with MediaID {update_media_id} (doesn't match {media_id})")
                                 continue
                             
+                            # Use original filename from API, fallback to generated name
+                            original_name = update.get('Name', '')
+                            if original_name and original_name.endswith('.tu'):
+                                file_name = original_name
+                            else:
+                                file_name = f"{title_id}_{update.get('Version', '1')}.tu"
+                            
                             tu_info = {
-                                'fileName': f"{title_id}_{update.get('Version', '1')}.tu",
+                                'fileName': file_name,
                                 'downloadUrl': f"{RESOURCES_URL}/TitleUpdate.php?tuid={update.get('TitleUpdateID', '')}",
                                 'titleUpdateId': update.get('TitleUpdateID', ''),
                                 'version': update.get('Version', ''),
                                 'mediaId': update_media_id,
                                 'titleId': title_id,
-                                'titleName': update.get('Name', ''),
+                                'titleName': original_name,
                                 'size': update.get('Size', 0),
                                 'uploadDate': update.get('UploadDate', ''),
                                 'hash': update.get('hash', ''),
