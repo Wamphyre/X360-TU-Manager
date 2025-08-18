@@ -13,11 +13,12 @@
 - 🌐 **XboxUnity integration** with API Key or username/password authentication
 - 📥 **Smart TU downloading** with original filenames from XboxUnity servers
 - 🎯 **MediaID filtering** - only downloads TUs that match your exact game version
-- � ***Organized folder structure** - downloads TUs into game-named folders
-- � **QTuick copy functions** for MediaID and TitleID to clipboard
-- � ***HTML export** - generate a complete game catalog for inventory control and management
+- 📁 **Organized folder structure** - downloads TUs into game-named folders
+- 📋 **Quick copy functions** for MediaID and TitleID to clipboard
+- 📄 **HTML export** - generate a complete game catalog for inventory control and management
 - 💾 **Advanced USB preparation** - automatic TU type detection (Cache vs Content)
-- � **Dual eTU support** - handles both uppercase (Cache) and lowercase (Content) formats
+- 🔄 **Dual TU support** - handles both uppercase (Cache) and lowercase (Content) formats
+- 🌐 **Direct FTP upload** - upload TUs directly to Xbox 360 via FTP (no USB needed)
 - 📊 **Progress tracking** with detailed logs and statistics
 
 ## 📸 Screenshot
@@ -81,15 +82,20 @@ Your support helps maintain and improve this tool for the Xbox 360 community! �
 
 ## 🎯 How to Use
 
-### Step 1: Authentication
+### Step 1: Setup
 1. **Launch the application**:
    ```bash
    python3 main.py
    ```
-2. **Choose authentication method**:
+2. **Configure XboxUnity authentication**:
    - **Option A**: Enter your XboxUnity **API Key** (recommended)
    - **Option B**: Enter your XboxUnity **username and password**
-3. **Click "Login"** to authenticate
+3. **Configure Xbox 360 FTP** (optional, for direct upload):
+   - **Xbox IP**: Your Xbox 360's IP address
+   - **FTP User**: FTP username (leave empty for anonymous)
+   - **FTP Pass**: FTP password (leave empty for anonymous)
+   - **Click "Test FTP"** to verify connection
+4. **Click "Login"** to authenticate with XboxUnity
 
 ### Step 2: Detect Games
 1. **Click "Select Games Folder"**
@@ -149,6 +155,16 @@ Your support helps maintain and improve this tool for the Xbox 360 community! �
 4. **Copy both "Content" and "Cache" folders** to the root of your USB drive
 5. **Connect USB to Xbox 360** and install TUs from System Settings > Memory or use Aurora
 
+#### 🌐 Upload Directly to Xbox 360 (FTP)
+1. **Configure FTP settings** in the Xbox 360 FTP Connection panel
+2. **Enable FTP on Xbox 360** (Aurora FTP plugin recommended)
+3. **Click "Upload to Xbox"** after downloading TUs
+4. **Select TUs folder** - works with individual files or USB_Xbox360 structure
+5. **Wait for upload** - TUs are automatically placed in correct directories:
+   - Cache TUs → `/Hdd1/Cache/`
+   - Content TUs → `/Hdd1/Content/0000000000000000/[TitleID]/000B0000/`
+6. **TUs are immediately available** in Aurora without restart
+
 ---
 
 ## 🔧 Technical Details
@@ -179,6 +195,13 @@ Your support helps maintain and improve this tool for the Xbox 360 community! �
 - **Content TUs** (lowercase): Go in `Content/0000000000000000/[TitleID]/000B0000/` structure
 - **Automatic Detection**: Tool automatically determines correct placement based on filename format
 
+### FTP Upload Features
+- **Direct Xbox 360 connection** via Aurora FTP plugin
+- **Automatic directory creation** - creates required folder structure
+- **Smart file placement** - Cache and Content TUs go to correct locations
+- **No USB required** - upload directly over network
+- **Immediate availability** - TUs ready to use in Aurora instantly
+
 ---
 
 ## 🛠️ Troubleshooting
@@ -204,11 +227,24 @@ Your support helps maintain and improve this tool for the Xbox 360 community! �
 - Some games might not be in XboxUnity's database
 - Check the logs for detailed information
 
+**"FTP connection failed"**
+- Verify Xbox 360 IP address is correct
+- Ensure FTP is enabled on Xbox 360 (Aurora FTP plugin)
+- Check network connectivity between PC and Xbox 360
+- Try anonymous login (leave user/pass empty) first
+
 ### Getting XboxUnity API Key
 1. **Register** at [XboxUnity.net](https://xboxunity.net)
 2. **Go to your profile settings**
 3. **Generate an API Key**
 4. **Copy and paste** into X360 TU Manager
+
+### Setting up Xbox 360 FTP
+1. **Install Aurora** on your Xbox 360
+2. **Enable FTP plugin** in Aurora settings
+3. **Note your Xbox 360's IP address** (System Settings > Network Settings)
+4. **Configure FTP settings** in X360 TU Manager
+5. **Test connection** before uploading
 
 ---
 
@@ -236,13 +272,6 @@ Contributions are welcome! Please feel free to:
 - **Submit pull requests** to improve the code
 - **Improve documentation** and help others
 
-### Development Setup
-1. Fork the repository on GitHub
-2. Clone your fork locally
-3. Create a new branch for your feature
-4. Make your changes and test thoroughly
-5. Submit a pull request with a clear description
-
 ---
 
 ## ⚖️ Legal Notice
@@ -256,4 +285,10 @@ Contributions are welcome! Please feel free to:
 
 ## 🎮 Enjoy Your Updated Games!
 
-X360 TU Manager makes it easy to keep your Xbox 360 games updated with the latest patches and improvements. Happy gaming! 🎯
+X360 TU Manager makes it easy to keep your Xbox 360 games updated with the latest patches and improvements. Whether you prefer USB installation or direct FTP upload, your games will be updated and ready to play! Happy gaming! 🎯
+
+## 🚀 Quick Start Guide
+
+1. **Download TUs**: Login → Select Games Folder → Search and Download TUs
+2. **Option A - USB**: Prepare USB → Copy to USB drive → Install on Xbox 360
+3. **Option B - FTP**: Configure FTP → Upload to Xbox → Ready to play immediately!
