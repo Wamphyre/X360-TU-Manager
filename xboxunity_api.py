@@ -121,12 +121,8 @@ def buscar_tus_con_endpoint_real(title_id, media_id=None, token=None, api_key=No
                             print(f"[INFO] Processing MediaID: {item_media_id} ({len(updates)} updates)")
                             
                             for update in updates:
-                                # Use original filename from API, fallback to generated name
-                                original_name = update.get('Name', '')
-                                if original_name and original_name.endswith('.tu'):
-                                    file_name = original_name
-                                else:
-                                    file_name = f"{title_id}_{update.get('Version', '1')}.tu"
+                                # Use temporary filename - will be updated with real name during download
+                                file_name = f"{title_id}_{update.get('Version', '1')}.tu"
                                 
                                 tu_info = {
                                     'fileName': file_name,
@@ -135,7 +131,7 @@ def buscar_tus_con_endpoint_real(title_id, media_id=None, token=None, api_key=No
                                     'version': update.get('Version', ''),
                                     'mediaId': item_media_id,
                                     'titleId': title_id,
-                                    'titleName': original_name,
+                                    'titleName': update.get('Name', ''),
                                     'size': update.get('Size', 0),
                                     'uploadDate': update.get('UploadDate', ''),
                                     'hash': update.get('hash', ''),
@@ -158,12 +154,8 @@ def buscar_tus_con_endpoint_real(title_id, media_id=None, token=None, api_key=No
                                 print(f"[INFO] Skipping TU with MediaID {update_media_id} (doesn't match {media_id})")
                                 continue
                             
-                            # Use original filename from API, fallback to generated name
-                            original_name = update.get('Name', '')
-                            if original_name and original_name.endswith('.tu'):
-                                file_name = original_name
-                            else:
-                                file_name = f"{title_id}_{update.get('Version', '1')}.tu"
+                            # Use temporary filename - will be updated with real name during download
+                            file_name = f"{title_id}_{update.get('Version', '1')}.tu"
                             
                             tu_info = {
                                 'fileName': file_name,
@@ -172,7 +164,7 @@ def buscar_tus_con_endpoint_real(title_id, media_id=None, token=None, api_key=No
                                 'version': update.get('Version', ''),
                                 'mediaId': update_media_id,
                                 'titleId': title_id,
-                                'titleName': original_name,
+                                'titleName': update.get('Name', ''),
                                 'size': update.get('Size', 0),
                                 'uploadDate': update.get('UploadDate', ''),
                                 'hash': update.get('hash', ''),
@@ -243,7 +235,7 @@ def buscar_tus(media_id=None, title_id=None, token=None, api_key=None):
         return []
 
 def descargar_tu(url, destino, progreso_callback=None):
-    """Download a TU from the specified URL"""
+    """Download a TU from the specified URL and return the original filename"""
     try:
         print(f"[INFO] Downloading from: {url}")
         
@@ -260,6 +252,33 @@ def descargar_tu(url, destino, progreso_callback=None):
         r = requests.get(url, headers=headers, stream=True, timeout=60)
         
         if r.status_code == 200:
+            # Try to get original filename from Content-Disposition header
+            original_filename = None
+            content_disposition = r.headers.get('content-disposition', '')
+            if content_disposition:
+                import re
+                filename_match = re.search(r'filename[^;=\n]*=(([\'"]).*?\2|[^;\n]*)', content_disposition)
+                if filename_match:
+                    original_filename = filename_match.group(1).strip('\'"')
+                    print(f"[INFO] Original filename from headers: {original_filename}")
+            
+            # If no filename in headers, try to get it from URL or use the provided destino
+            if not original_filename:
+                # Check if URL has filename parameter or extract from URL
+                from urllib.parse import urlparse, parse_qs
+                parsed_url = urlparse(url)
+                query_params = parse_qs(parsed_url.query)
+                print(f"[DEBUG] URL query params: {query_params}")
+                
+                # For now, use the provided destino filename
+                original_filename = os.path.basename(destino)
+            
+            # Update destino with original filename if we found one
+            if original_filename and original_filename != os.path.basename(destino):
+                destino_dir = os.path.dirname(destino)
+                destino = os.path.join(destino_dir, original_filename)
+                print(f"[INFO] Using original filename: {destino}")
+            
             total_size = int(r.headers.get('content-length', 0))
             print(f"[INFO] File size: {total_size} bytes")
             
@@ -274,12 +293,12 @@ def descargar_tu(url, destino, progreso_callback=None):
                             progreso_callback(downloaded, total_size)
             
             print(f"[INFO] Download completed: {destino}")
-            return True
+            return True, original_filename
         else:
             print(f"[ERROR] Download error: {r.status_code}")
             print(f"[ERROR] Response: {r.text[:200]}")
-            return False
+            return False, None
             
     except Exception as e:
         print(f"[ERROR] Error downloading TU: {e}")
-        return False
+        return False, None

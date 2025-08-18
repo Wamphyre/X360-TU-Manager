@@ -276,9 +276,17 @@ class XboxTUMApp:
                         self.root.update_idletasks()
 
                 self._log(f"    Downloading {filename} to {nombre_carpeta}/...")
-                exito = descargar_tu(url, destino, progreso_callback=actualizar_progreso)
+                exito, original_filename = descargar_tu(url, destino, progreso_callback=actualizar_progreso)
                 if exito:
-                    self._log(f"    Downloaded {filename} successfully to {nombre_carpeta}/")
+                    actual_filename = original_filename if original_filename else filename
+                    self._log(f"    Downloaded {actual_filename} successfully to {nombre_carpeta}/")
+                    
+                    # Create a mapping file to track original filename -> TitleID relationship
+                    if original_filename and original_filename != filename:
+                        mapping_file = os.path.join(carpeta_juego, ".tu_mapping.txt")
+                        with open(mapping_file, "a", encoding="utf-8") as f:
+                            f.write(f"{original_filename}={juego['title_id']}={juego['nombre']}\n")
+                    
                     total_tus_descargados += 1
                 else:
                     self._log(f"    ERROR downloading {filename}.")
@@ -803,27 +811,97 @@ class XboxTUMApp:
         # Execute in thread to avoid blocking GUI
         threading.Thread(target=self._crear_estructura_usb, args=(carpeta_tus, tus_encontrados), daemon=True).start()
     
+    def _es_archivo_tu(self, nombre_archivo):
+        """Check if file is a TU based on naming patterns"""
+        # Old format: ends with .tu
+        if nombre_archivo.endswith('.tu'):
+            return True
+        # New uppercase format: TU_XXXXXX_XXXXXXXXX.XXXXXXXXXXX
+        if nombre_archivo.startswith('TU_') and len(nombre_archivo) > 10:
+            return True
+        # New lowercase format: tuXXXXXXXX_XXXXXXXX
+        if nombre_archivo.lower().startswith('tu') and '_' in nombre_archivo and len(nombre_archivo) > 10:
+            return True
+        return False
+    
+    def _extraer_title_id_de_archivo(self, nombre_archivo):
+        """Extract TitleID from TU filename"""
+        # Old format: TitleID_Version.tu
+        if nombre_archivo.endswith('.tu') and '_' in nombre_archivo:
+            return nombre_archivo.split('_')[0]
+        
+        # New uppercase format: TU_XXXXXX_XXXXXXXXX.XXXXXXXXXXX
+        # We need to match with games by trying different approaches
+        if nombre_archivo.startswith('TU_'):
+            # Try to find matching game by checking all our games
+            for juego in self.juegos:
+                title_id = juego.get('title_id')
+                if title_id and title_id in nombre_archivo:
+                    return title_id
+        
+        # New lowercase format: tuXXXXXXXX_XXXXXXXX
+        if nombre_archivo.lower().startswith('tu') and '_' in nombre_archivo:
+            # Extract potential TitleID from start
+            potential_id = nombre_archivo[2:].split('_')[0]
+            if len(potential_id) == 8:  # TitleID is 8 characters
+                return potential_id.upper()
+        
+        return None
+    
+    def _cargar_mapeo_tus(self, carpeta_base):
+        """Load TU filename to TitleID mapping from .tu_mapping.txt files"""
+        mapeo = {}
+        try:
+            for root, dirs, files in os.walk(carpeta_base):
+                if ".tu_mapping.txt" in files:
+                    mapping_file = os.path.join(root, ".tu_mapping.txt")
+                    with open(mapping_file, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if "=" in line:
+                                parts = line.split("=")
+                                if len(parts) >= 3:
+                                    filename = parts[0]
+                                    title_id = parts[1]
+                                    game_name = parts[2]
+                                    mapeo[filename] = {'title_id': title_id, 'game_name': game_name}
+        except Exception as e:
+            self._log(f"[DEBUG] Error loading TU mapping: {e}")
+        return mapeo
+    
     def _buscar_tus_descargados(self, carpeta_base):
-        """Search for downloaded .tu files in folder structure"""
+        """Search for downloaded TU files in folder structure"""
         tus_encontrados = []
         
         try:
+            # Load mapping from .tu_mapping.txt files
+            mapeo_tus = self._cargar_mapeo_tus(carpeta_base)
+            
             for root, dirs, files in os.walk(carpeta_base):
                 for file in files:
-                    if file.endswith('.tu'):
+                    if self._es_archivo_tu(file):
                         ruta_completa = os.path.join(root, file)
                         
-                        # Extract TitleID from filename
+                        # Try to get TitleID from mapping first
                         title_id = None
-                        if '_' in file:
-                            title_id = file.split('_')[0]
+                        game_name = None
+                        
+                        if file in mapeo_tus:
+                            title_id = mapeo_tus[file]['title_id']
+                            game_name = mapeo_tus[file]['game_name']
+                            self._log(f"[DEBUG] Found mapping: {file} -> {title_id} ({game_name})")
+                        else:
+                            # Fallback to filename extraction
+                            title_id = self._extraer_title_id_de_archivo(file)
+                            self._log(f"[DEBUG] Extracted from filename: {file} -> {title_id}")
                         
                         # Find corresponding game in our list
                         juego_info = None
-                        for juego in self.juegos:
-                            if juego.get('title_id') == title_id:
-                                juego_info = juego
-                                break
+                        if title_id:
+                            for juego in self.juegos:
+                                if juego.get('title_id') == title_id:
+                                    juego_info = juego
+                                    break
                         
                         if juego_info:
                             tus_encontrados.append({
@@ -833,6 +911,10 @@ class XboxTUMApp:
                                 'media_id': juego_info.get('media_id'),
                                 'nombre_juego': juego_info.get('nombre')
                             })
+                            self._log(f"[DEBUG] TU matched: {file} -> {juego_info.get('nombre')}")
+                        else:
+                            # Log unmatched TUs for debugging
+                            self._log(f"[DEBUG] TU found but no matching game: {file} (TitleID: {title_id})")
                             
             return tus_encontrados
             
@@ -840,8 +922,23 @@ class XboxTUMApp:
             self._log(f"[ERROR] Error searching TUs: {e}")
             return []
     
+    def _detectar_tipo_tu(self, nombre_archivo):
+        """Detect TU type based on filename format"""
+        # Uppercase format (e.g., TU_16L61V6_0000014000000.00000000000O9) -> Cache
+        if nombre_archivo.startswith('TU_') and any(c.isupper() for c in nombre_archivo):
+            return 'cache'
+        # Lowercase format (e.g., tu00000002_00000000) -> Content
+        elif nombre_archivo.lower().startswith('tu') and not nombre_archivo.startswith('TU_'):
+            return 'content'
+        # Old format with .tu extension -> Content
+        elif nombre_archivo.endswith('.tu'):
+            return 'content'
+        # Default to content for unknown formats
+        else:
+            return 'content'
+    
     def _crear_estructura_usb(self, carpeta_base, tus_encontrados):
-        """Create USB structure for Xbox 360"""
+        """Create USB structure for Xbox 360 with automatic TU type detection"""
         try:
             # Create USB_Xbox360 folder in the same directory
             carpeta_usb = os.path.join(carpeta_base, "USB_Xbox360")
@@ -849,9 +946,11 @@ class XboxTUMApp:
             self._log("Starting USB structure preparation for Xbox 360...")
             self._log(f"Destination folder: {carpeta_usb}")
             
-            # Create base structure
+            # Create base structures
             content_path = os.path.join(carpeta_usb, "Content", "0000000000000000")
+            cache_path = os.path.join(carpeta_usb, "Cache")
             os.makedirs(content_path, exist_ok=True)
+            os.makedirs(cache_path, exist_ok=True)
             
             total_tus = len(tus_encontrados)
             self.progress["value"] = 0
@@ -859,6 +958,8 @@ class XboxTUMApp:
             
             tus_procesados = 0
             errores = 0
+            cache_tus = 0
+            content_tus = 0
             
             for idx, tu_info in enumerate(tus_encontrados, 1):
                 try:
@@ -867,19 +968,28 @@ class XboxTUMApp:
                     ruta_origen = tu_info['ruta_completa']
                     nombre_juego = tu_info['nombre_juego']
                     
-                    self._log(f"Processing TU for '{nombre_juego}' (TitleID: {title_id})...")
+                    # Detect TU type
+                    tipo_tu = self._detectar_tipo_tu(archivo)
                     
-                    # Create structure: Content/0000000000000000/[TitleID]/000B0000/
-                    tu_path = os.path.join(content_path, title_id, "000B0000")
-                    os.makedirs(tu_path, exist_ok=True)
+                    self._log(f"Processing TU for '{nombre_juego}' (TitleID: {title_id})...")
+                    self._log(f"  📁 TU Type: {tipo_tu.upper()} - {archivo}")
+                    
+                    if tipo_tu == 'cache':
+                        # Cache TUs go directly in Cache/ folder
+                        destino = os.path.join(cache_path, archivo)
+                        cache_tus += 1
+                    else:
+                        # Content TUs go in Content/0000000000000000/[TitleID]/000B0000/
+                        tu_path = os.path.join(content_path, title_id, "000B0000")
+                        os.makedirs(tu_path, exist_ok=True)
+                        destino = os.path.join(tu_path, archivo)
+                        content_tus += 1
                     
                     # Copy TU file
-                    destino = os.path.join(tu_path, archivo)
-                    
                     import shutil
                     shutil.copy2(ruta_origen, destino)
                     
-                    self._log(f"  ✅ Copied: {archivo}")
+                    self._log(f"  ✅ Copied to: {tipo_tu.upper()} directory")
                     tus_procesados += 1
                     
                 except Exception as e:
@@ -896,15 +1006,24 @@ class XboxTUMApp:
             self._log("="*50)
             self._log(f"Folder created: {carpeta_usb}")
             self._log(f"TUs processed: {tus_procesados}")
+            self._log(f"  - Content TUs: {content_tus}")
+            self._log(f"  - Cache TUs: {cache_tus}")
             self._log(f"Errors: {errores}")
+            self._log("\nINSTALLATION INSTRUCTIONS:")
+            self._log("1. Copy the 'Content' folder to the root of your USB drive")
+            if cache_tus > 0:
+                self._log("2. Copy the 'Cache' folder to the root of your USB drive")
+            self._log("3. Connect USB to Xbox 360 and install from System Settings > Memory")
             
             messagebox.showinfo(
                 "USB Prepared", 
                 f"USB structure created successfully:\n\n"
                 f"📁 Location: {carpeta_usb}\n"
-                f"🎮 TUs processed: {tus_procesados}\n"
+                f"🎮 Total TUs: {tus_procesados}\n"
+                f"📂 Content TUs: {content_tus}\n"
+                f"💾 Cache TUs: {cache_tus}\n"
                 f"❌ Errors: {errores}\n\n"
-                f"Now you can copy the 'Content' folder to your USB drive."
+                f"Copy both 'Content' and 'Cache' folders to your USB drive."
             )
             
         except Exception as e:
