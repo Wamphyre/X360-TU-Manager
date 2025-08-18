@@ -1,5 +1,9 @@
 # X360 TU Manager
 
+[![GitHub Repository](https://img.shields.io/badge/GitHub-X360--TU--Manager-blue?logo=github)](https://github.com/Wamphyre/X360-TU-Manager)
+[![Python](https://img.shields.io/badge/Python-3.8+-green?logo=python)](https://python.org)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](https://github.com/Wamphyre/X360-TU-Manager/blob/main/LICENSE)
+
 **X360 TU Manager** is a Python GUI tool for **managing and downloading Title Updates (TUs)** for Xbox 360 games from [XboxUnity](https://xboxunity.net), using each game's **MediaID** and **TitleID**.
 
 ## ✨ Features
@@ -7,12 +11,13 @@
 - 🎮 **Automatic game detection** from folders containing Xbox 360 games
 - 🔍 **MediaID and TitleID extraction** using XexTool from default.xex files
 - 🌐 **XboxUnity integration** with API Key or username/password authentication
-- 📥 **Smart TU downloading** filtered by specific MediaID to avoid incompatible updates
-- 📁 **Organized folder structure** - downloads TUs into game-named folders
-- 📋 **Quick copy functions** for MediaID and TitleID to clipboard
-- 📄 **HTML export** - generate a complete game catalog for inventory control and management
-- 💾 **USB preparation** - create Xbox 360-compatible folder structure for installation
-- 🎯 **Real-time filtering** - only downloads TUs that match your exact MediaID
+- 📥 **Smart TU downloading** with original filenames from XboxUnity servers
+- 🎯 **MediaID filtering** - only downloads TUs that match your exact game version
+- � ***Organized folder structure** - downloads TUs into game-named folders
+- � **QTuick copy functions** for MediaID and TitleID to clipboard
+- � ***HTML export** - generate a complete game catalog for inventory control and management
+- 💾 **Advanced USB preparation** - automatic TU type detection (Cache vs Content)
+- � **Dual eTU support** - handles both uppercase (Cache) and lowercase (Content) formats
 - 📊 **Progress tracking** with detailed logs and statistics
 
 ## 📸 Screenshot
@@ -122,19 +127,26 @@ Your support helps maintain and improve this tool for the Xbox 360 community! �
 #### 💾 Prepare USB for Xbox 360
 1. **Click "Prepare USB"** after downloading TUs
 2. **Select the folder** where you downloaded the TUs
-3. **Wait for USB structure creation** - creates Xbox 360-compatible folders:
+3. **Wait for USB structure creation** - automatically detects TU types and creates proper structure:
+
+   **For Content TUs** (lowercase format like `tu00000005_00000000`):
    ```
    USB_Xbox360/
    └── Content/
        └── 0000000000000000/
-           ├── [TitleID1]/
-           │   └── 000B0000/
-           │       └── [game1_TU.tu]
-           └── [TitleID2]/
+           └── [TitleID]/
                └── 000B0000/
-                   └── [game2_TU.tu]
+                   └── tu00000005_00000000
    ```
-4. **Copy the "Content" folder** to the root of your USB drive
+
+   **For Cache TUs** (uppercase format like `TU_16L61V6_0000014000000.00000000000O9`):
+   ```
+   USB_Xbox360/
+   └── Cache/
+       └── TU_16L61V6_0000014000000.00000000000O9
+   ```
+
+4. **Copy both "Content" and "Cache" folders** to the root of your USB drive
 5. **Connect USB to Xbox 360** and install TUs from System Settings > Memory or use Aurora
 
 ---
@@ -146,17 +158,26 @@ Your support helps maintain and improve this tool for the Xbox 360 community! �
 2. **ID Extraction**: Extracts MediaID and TitleID from XEX headers
 3. **XboxUnity API**: Uses real endpoint `TitleUpdateInfo.php` discovered through web analysis
 4. **Smart Filtering**: Only downloads TUs matching your exact MediaID to ensure compatibility
-5. **Organized Storage**: Creates game-named folders for easy management
+5. **Original Filenames**: Downloads TUs with their original names from XboxUnity servers
+6. **Automatic TU Classification**: Detects TU type (Cache vs Content) based on filename format
+7. **Organized Storage**: Creates game-named folders and proper Xbox 360 directory structure
 
 ### Supported Formats
 - **Input**: Xbox 360 games with `default.xex` files
-- **Output**: `.tu` files in Xbox 360-compatible folder structure
+- **Output**: Original TU files with proper Xbox 360 naming conventions
+  - **Cache TUs**: Uppercase format (e.g., `TU_16L61V6_0000014000000.00000000000O9`)
+  - **Content TUs**: Lowercase format (e.g., `tu00000005_00000000`)
 - **Export**: HTML game catalog for inventory control and collection management
 
 ### MediaID vs TitleID
 - **MediaID**: Unique identifier for your specific game disc/version
 - **TitleID**: Game identifier (same for all versions of a game)
 - **Why MediaID matters**: Ensures TU compatibility with your exact game version
+
+### TU Types and Installation
+- **Cache TUs** (uppercase): Go directly in Xbox 360's `Cache/` folder
+- **Content TUs** (lowercase): Go in `Content/0000000000000000/[TitleID]/000B0000/` structure
+- **Automatic Detection**: Tool automatically determines correct placement based on filename format
 
 ---
 
@@ -212,7 +233,15 @@ X360 TU Manager/
 Contributions are welcome! Please feel free to:
 - **Report bugs or issues** on [GitHub Issues](https://github.com/Wamphyre/X360-TU-Manager/issues)
 - **Suggest new features** via feature requests
+- **Submit pull requests** to improve the code
 - **Improve documentation** and help others
+
+### Development Setup
+1. Fork the repository on GitHub
+2. Clone your fork locally
+3. Create a new branch for your feature
+4. Make your changes and test thoroughly
+5. Submit a pull request with a clear description
 
 ---
 
