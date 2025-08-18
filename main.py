@@ -3,6 +3,7 @@ import json
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from ftplib import FTP
 from xboxunity_api import login_xboxunity, buscar_tus, descargar_tu, probar_conectividad
 from xex_reader import obtener_info_juego
 
@@ -16,9 +17,13 @@ class XboxTUMApp:
         self.api_key = None
         self.juegos = []
 
+        # Top Frame for Login and FTP
+        top_frame = tk.Frame(root)
+        top_frame.pack(fill="x", padx=10, pady=5)
+
         # Login Frame
-        login_frame = tk.LabelFrame(root, text="Login XboxUnity / API Key", padx=10, pady=10)
-        login_frame.pack(fill="x", padx=10, pady=5)
+        login_frame = tk.LabelFrame(top_frame, text="Login XboxUnity / API Key", padx=10, pady=10)
+        login_frame.pack(side="left", fill="x", expand=True, padx=(0, 5))
 
         tk.Label(login_frame, text="Username:").grid(row=0, column=0, sticky="e")
         tk.Label(login_frame, text="Password:").grid(row=1, column=0, sticky="e")
@@ -33,6 +38,24 @@ class XboxTUMApp:
         self.entry_apikey.grid(row=2, column=1, pady=2)
 
         tk.Button(login_frame, text="Login", command=self.login).grid(row=0, column=2, rowspan=3, padx=5)
+
+        # FTP Frame
+        ftp_frame = tk.LabelFrame(top_frame, text="Xbox 360 FTP Connection", padx=10, pady=10)
+        ftp_frame.pack(side="right", fill="x", expand=True, padx=(5, 0))
+
+        tk.Label(ftp_frame, text="Xbox IP:").grid(row=0, column=0, sticky="e")
+        tk.Label(ftp_frame, text="FTP User:").grid(row=1, column=0, sticky="e")
+        tk.Label(ftp_frame, text="FTP Pass:").grid(row=2, column=0, sticky="e")
+
+        self.entry_xbox_ip = tk.Entry(ftp_frame)
+        self.entry_ftp_user = tk.Entry(ftp_frame)
+        self.entry_ftp_pass = tk.Entry(ftp_frame, show="*")
+
+        self.entry_xbox_ip.grid(row=0, column=1, pady=2)
+        self.entry_ftp_user.grid(row=1, column=1, pady=2)
+        self.entry_ftp_pass.grid(row=2, column=1, pady=2)
+
+        tk.Button(ftp_frame, text="Test FTP", command=self.test_ftp_connection).grid(row=0, column=2, rowspan=3, padx=5)
 
         # Games Frame
         juegos_frame = tk.LabelFrame(root, text="Detected Games", padx=10, pady=10)
@@ -59,6 +82,8 @@ class XboxTUMApp:
                  bg="#FF9800", fg="white", font=("Arial", 10, "bold")).pack(side="left", padx=5)
         tk.Button(botones_copiar_frame, text="Prepare USB", command=self.preparar_usb_xbox360,
                  bg="#9C27B0", fg="white", font=("Arial", 10, "bold")).pack(side="left", padx=5)
+        tk.Button(botones_copiar_frame, text="Upload to Xbox", command=self.upload_to_xbox,
+                 bg="#E91E63", fg="white", font=("Arial", 10, "bold")).pack(side="left", padx=5)
         
         # Keep context menu as additional option
         self.menu_popup = tk.Menu(self.root, tearoff=0)
@@ -84,9 +109,17 @@ class XboxTUMApp:
         # Load config
         self.load_config()
 
-    def save_config(self, username, password, api_key):
+    def save_config(self, username, password, api_key, xbox_ip="", ftp_user="", ftp_pass=""):
+        config_data = {
+            "username": username, 
+            "password": password, 
+            "api_key": api_key,
+            "xbox_ip": xbox_ip,
+            "ftp_user": ftp_user,
+            "ftp_pass": ftp_pass
+        }
         with open(CONFIG_FILE, "w") as f:
-            json.dump({"username": username, "password": password, "api_key": api_key}, f)
+            json.dump(config_data, f)
 
     def load_config(self):
         if os.path.exists(CONFIG_FILE):
@@ -95,6 +128,9 @@ class XboxTUMApp:
                 self.entry_user.insert(0, data.get("username", ""))
                 self.entry_pass.insert(0, data.get("password", ""))
                 self.entry_apikey.insert(0, data.get("api_key", ""))
+                self.entry_xbox_ip.insert(0, data.get("xbox_ip", ""))
+                self.entry_ftp_user.insert(0, data.get("ftp_user", ""))
+                self.entry_ftp_pass.insert(0, data.get("ftp_pass", ""))
                 if data.get("api_key"):
                     self.api_key = data.get("api_key")
                 elif data.get("username") and data.get("password"):
@@ -113,7 +149,10 @@ class XboxTUMApp:
 
         if self.api_key:
             if not auto:
-                self.save_config(username, password, api_key)
+                xbox_ip = self.entry_xbox_ip.get().strip()
+                ftp_user = self.entry_ftp_user.get().strip()
+                ftp_pass = self.entry_ftp_pass.get().strip()
+                self.save_config(username, password, api_key, xbox_ip, ftp_user, ftp_pass)
                 self._log("API Key saved successfully.")
                 # Test connectivity with API Key
                 self._log("Testing connectivity with XboxUnity...")
@@ -138,7 +177,10 @@ class XboxTUMApp:
         if token:
             self.token = token
             if not auto:
-                self.save_config(username, password, api_key)
+                xbox_ip = self.entry_xbox_ip.get().strip()
+                ftp_user = self.entry_ftp_user.get().strip()
+                ftp_pass = self.entry_ftp_pass.get().strip()
+                self.save_config(username, password, api_key, xbox_ip, ftp_user, ftp_pass)
                 self._log("Login successful.")
         else:
             self.delete_config()
@@ -1044,6 +1086,213 @@ class XboxTUMApp:
             self.root.after(0, actualizar_log)
         except:
             actualizar_log()
+
+    def test_ftp_connection(self):
+        """Test FTP connection to Xbox 360"""
+        xbox_ip = self.entry_xbox_ip.get().strip()
+        ftp_user = self.entry_ftp_user.get().strip()
+        ftp_pass = self.entry_ftp_pass.get().strip()
+        
+        if not xbox_ip:
+            messagebox.showwarning("Warning", "Please enter Xbox 360 IP address.")
+            return
+        
+        try:
+            self._log(f"Testing FTP connection to {xbox_ip}...")
+            ftp = FTP()
+            ftp.connect(xbox_ip, 21, timeout=10)
+            
+            if ftp_user and ftp_pass:
+                ftp.login(ftp_user, ftp_pass)
+                self._log(f"FTP login successful with user: {ftp_user}")
+            else:
+                ftp.login()  # Anonymous login
+                self._log("FTP anonymous login successful")
+            
+            # Test navigation to Hdd1
+            ftp.cwd('/Hdd1')
+            self._log("Successfully navigated to /Hdd1")
+            
+            ftp.quit()
+            self._log("FTP connection test successful! ✅")
+            messagebox.showinfo("Success", "FTP connection to Xbox 360 successful!")
+            
+        except Exception as e:
+            error_msg = f"FTP connection failed: {e}"
+            self._log(error_msg)
+            messagebox.showerror("FTP Error", error_msg)
+
+    def upload_to_xbox(self):
+        """Upload TUs to Xbox 360 via FTP"""
+        xbox_ip = self.entry_xbox_ip.get().strip()
+        ftp_user = self.entry_ftp_user.get().strip()
+        ftp_pass = self.entry_ftp_pass.get().strip()
+        
+        if not xbox_ip:
+            messagebox.showwarning("Warning", "Please enter Xbox 360 IP address and test FTP connection first.")
+            return
+        
+        # Ask for TUs folder
+        carpeta_tus = filedialog.askdirectory(title="Select folder with TUs (individual files or USB_Xbox360 structure)")
+        if not carpeta_tus:
+            return
+        
+        # Execute in thread to avoid blocking GUI
+        threading.Thread(target=self._upload_tus_to_xbox, args=(carpeta_tus, xbox_ip, ftp_user, ftp_pass), daemon=True).start()
+
+    def _upload_tus_to_xbox(self, carpeta_tus, xbox_ip, ftp_user, ftp_pass):
+        """Upload TUs to Xbox 360 via FTP - threaded function"""
+        try:
+            self._log("Starting upload to Xbox 360...")
+            self._log(f"Connecting to {xbox_ip}...")
+            
+            # Connect to FTP
+            ftp = FTP()
+            ftp.connect(xbox_ip, 21, timeout=30)
+            
+            if ftp_user and ftp_pass:
+                ftp.login(ftp_user, ftp_pass)
+                self._log(f"Logged in as: {ftp_user}")
+            else:
+                ftp.login()
+                self._log("Logged in anonymously")
+            
+            # Navigate to Hdd1
+            ftp.cwd('/Hdd1')
+            self._log("Navigated to /Hdd1")
+            
+            # Check if it's a USB_Xbox360 structure or individual files
+            usb_structure_path = os.path.join(carpeta_tus, "USB_Xbox360")
+            if os.path.exists(usb_structure_path):
+                self._log("Detected USB_Xbox360 structure")
+                self._upload_usb_structure(ftp, usb_structure_path)
+            else:
+                self._log("Detected individual TU files")
+                self._upload_individual_files(ftp, carpeta_tus)
+            
+            ftp.quit()
+            self._log("Upload completed successfully! ✅")
+            messagebox.showinfo("Success", "TUs uploaded to Xbox 360 successfully!")
+            
+        except Exception as e:
+            error_msg = f"Upload failed: {e}"
+            self._log(error_msg)
+            messagebox.showerror("Upload Error", error_msg)
+
+    def _upload_usb_structure(self, ftp, usb_path):
+        """Upload from USB_Xbox360 structure"""
+        content_path = os.path.join(usb_path, "Content")
+        cache_path = os.path.join(usb_path, "Cache")
+        
+        uploaded_files = 0
+        
+        # Upload Content TUs
+        if os.path.exists(content_path):
+            self._log("Uploading Content TUs...")
+            self._ensure_ftp_dir(ftp, "Content")
+            uploaded_files += self._upload_directory_recursive(ftp, content_path, "Content")
+        
+        # Upload Cache TUs
+        if os.path.exists(cache_path):
+            self._log("Uploading Cache TUs...")
+            self._ensure_ftp_dir(ftp, "Cache")
+            uploaded_files += self._upload_directory_recursive(ftp, cache_path, "Cache")
+        
+        self._log(f"Total files uploaded: {uploaded_files}")
+
+    def _upload_individual_files(self, ftp, carpeta_tus):
+        """Upload individual TU files, detecting type automatically"""
+        uploaded_files = 0
+        
+        for root, dirs, files in os.walk(carpeta_tus):
+            for file in files:
+                if self._es_archivo_tu(file):
+                    ruta_local = os.path.join(root, file)
+                    tipo_tu = self._detectar_tipo_tu(file)
+                    
+                    self._log(f"Uploading {file} to {tipo_tu.upper()}...")
+                    
+                    if tipo_tu == 'cache':
+                        self._ensure_ftp_dir(ftp, "Cache")
+                        ftp.cwd('/Hdd1/Cache')
+                        with open(ruta_local, 'rb') as f:
+                            ftp.storbinary(f'STOR {file}', f)
+                    else:
+                        # For content TUs, we need TitleID
+                        title_id = self._extraer_title_id_de_archivo(file)
+                        if title_id:
+                            content_path = f"Content/0000000000000000/{title_id}/000B0000"
+                            self._ensure_ftp_dir_recursive(ftp, content_path)
+                            ftp.cwd(f'/Hdd1/{content_path}')
+                            with open(ruta_local, 'rb') as f:
+                                ftp.storbinary(f'STOR {file}', f)
+                        else:
+                            self._log(f"Warning: Could not determine TitleID for {file}, skipping")
+                            continue
+                    
+                    uploaded_files += 1
+                    self._log(f"✅ Uploaded: {file}")
+        
+        self._log(f"Total files uploaded: {uploaded_files}")
+
+    def _upload_directory_recursive(self, ftp, local_path, remote_base):
+        """Upload directory recursively"""
+        uploaded_files = 0
+        
+        for root, dirs, files in os.walk(local_path):
+            # Calculate relative path
+            rel_path = os.path.relpath(root, local_path)
+            if rel_path == '.':
+                remote_path = remote_base
+            else:
+                remote_path = f"{remote_base}/{rel_path.replace(os.sep, '/')}"
+            
+            # Ensure remote directory exists
+            if rel_path != '.':
+                self._ensure_ftp_dir_recursive(ftp, remote_path)
+            
+            # Upload files in current directory
+            if files:
+                ftp.cwd(f'/Hdd1/{remote_path}')
+                for file in files:
+                    local_file = os.path.join(root, file)
+                    self._log(f"Uploading {file} to {remote_path}/")
+                    with open(local_file, 'rb') as f:
+                        ftp.storbinary(f'STOR {file}', f)
+                    uploaded_files += 1
+        
+        return uploaded_files
+
+    def _ensure_ftp_dir(self, ftp, dirname):
+        """Ensure FTP directory exists"""
+        try:
+            ftp.cwd(f'/Hdd1/{dirname}')
+        except:
+            try:
+                ftp.cwd('/Hdd1')
+                ftp.mkd(dirname)
+                self._log(f"Created directory: {dirname}")
+            except:
+                pass  # Directory might already exist
+
+    def _ensure_ftp_dir_recursive(self, ftp, path):
+        """Ensure FTP directory path exists recursively"""
+        parts = path.split('/')
+        current_path = '/Hdd1'
+        
+        for part in parts:
+            if part:
+                current_path += f'/{part}'
+                try:
+                    ftp.cwd(current_path)
+                except:
+                    try:
+                        parent_path = '/'.join(current_path.split('/')[:-1])
+                        ftp.cwd(parent_path)
+                        ftp.mkd(part)
+                        self._log(f"Created directory: {current_path}")
+                    except:
+                        pass  # Directory might already exist
 
 if __name__ == "__main__":
     root = tk.Tk()
