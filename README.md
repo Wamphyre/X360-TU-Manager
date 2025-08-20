@@ -9,8 +9,8 @@
 ## ✨ Features
 
 - 🎮 **Automatic game detection** from folders containing Xbox 360 games
- - �️ **Integrated ZIP/ISO extraction** - extract game folders or ISO files directly from archives inside the app (new)
-- �🔍 **MediaID and TitleID extraction** using XexTool from default.xex files
+- 📁 **Integrated ZIP/ISO extraction** - extract game folders or ISO files directly from archives inside the app (new)
+- 🔍 **MediaID and TitleID extraction** using XexTool from default.xex files
 - 🌐 **XboxUnity integration** with API Key or username/password authentication
 - 📥 **Smart TU downloading** with original filenames from XboxUnity servers
 - 🎯 **MediaID filtering** - only downloads TUs that match your exact game version
