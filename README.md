@@ -9,7 +9,8 @@
 ## ✨ Features
 
 - 🎮 **Automatic game detection** from folders containing Xbox 360 games
-- 🔍 **MediaID and TitleID extraction** using XexTool from default.xex files
+ - �️ **Integrated ZIP/ISO extraction** - extract game folders or ISO files directly from archives inside the app (new)
+- �🔍 **MediaID and TitleID extraction** using XexTool from default.xex files
 - 🌐 **XboxUnity integration** with API Key or username/password authentication
 - 📥 **Smart TU downloading** with original filenames from XboxUnity servers
 - 🎯 **MediaID filtering** - only downloads TUs that match your exact game version
@@ -46,6 +47,9 @@ Your support helps maintain and improve this tool for the Xbox 360 community! �
   ```bash
   pip install requests tkinter
   ```
+ - System tools for archive extraction (recommended):
+    - **ZIP**: handled by Python's built-in libraries (no extra install required)
+    - **ISO**: for reliable ISO extraction, install **7-Zip** (Windows) or **p7zip/bsdtar** (Linux/macOS)
 
 ### 🖥️ Cross-Platform Support
 - **Windows**: Runs XexTool.exe natively (no Wine needed)
@@ -96,6 +100,16 @@ Your support helps maintain and improve this tool for the Xbox 360 community! �
    - **FTP Pass**: FTP password (leave empty for anonymous)
    - **Click "Test FTP"** to verify connection
 4. **Click "Login"** to authenticate with XboxUnity
+
+### Step 1.5 (Optional): Extract ZIP/ISO archives
+This step is completely optional — only use it if your games are stored inside ZIP or ISO archives. If your games are already extracted in folders, skip this step and continue to Step 2 (Detect Games).
+1. **Click "Extract Archive"** in the application (or drag-and-drop supported archive files/folders)
+2. **Select a ZIP or ISO file**, or a folder containing archives
+3. **Choose extraction destination** (the app can extract into the same parent folder or a chosen directory)
+4. **Wait for extraction** - if you chose to run this optional step, the tool will:
+   - Automatically detect archive type (ZIP or ISO)
+   - For ZIP: extract file/folder contents directly
+   - For ISO: extract files using available system tools (Python built-ins where possible, otherwise call system 7-Zip/p7zip if installed)
 
 ### Step 2: Detect Games
 1. **Click "Select Games Folder"**
@@ -184,6 +198,7 @@ Your support helps maintain and improve this tool for the Xbox 360 community! �
   - **Cache TUs**: Uppercase format (e.g., `TU_16L61V6_0000014000000.00000000000O9`)
   - **Content TUs**: Lowercase format (e.g., `tu00000005_00000000`)
 - **Export**: HTML game catalog for inventory control and collection management
+ - **Archives**: ZIP archives containing game folders or files, ISO images containing Xbox 360 game file systems (ISO extraction supported when system tools available)
 
 ### MediaID vs TitleID
 - **MediaID**: Unique identifier for your specific game disc/version
@@ -228,6 +243,11 @@ Your support helps maintain and improve this tool for the Xbox 360 community! �
 - Check the logs for detailed information
 
 **"FTP connection failed"**
+**"Archive extraction failed"**
+- Ensure the archive file is not corrupted and is a standard ZIP or ISO
+- For ZIP: the app uses Python's zipfile module and may fail on exotic compression methods; try extracting manually or with 7-Zip and place the extracted folder where the app can scan it
+- For ISO: ensure you have `7z`/`p7zip` or `bsdtar` installed on your system; on Linux you can install `p7zip-full` or `bsdtar` to improve ISO extraction compatibility
+- If extraction still fails, extract manually and point the app at the extracted folder
 - Verify Xbox 360 IP address is correct
 - Ensure FTP is enabled on Xbox 360 (Aurora FTP plugin)
 - Check network connectivity between PC and Xbox 360
@@ -258,8 +278,13 @@ X360 TU Manager/
 ├── config.json             # User configuration (auto-generated)
 ├── requirements.txt        # Python dependencies
 ├── README.md               # This file
-└── xextool/                # XEX analysis tools
-    └── XexTool.exe
+├── addons/                  # Extra tools and GUI addons
+│   ├── x360_extractor_gui.py # Optional GUI to extract archives/ISOs (addon)
+│   └── isoextract/          # Helper scripts/binaries for ISO extraction
+│       ├── extract-xiso     # Linux/macOS helper script (executable)
+│       └── extract-xiso.exe # Windows helper (optional)
+└── xextool/                 # XEX analysis tools
+   └── XexTool.exe
 ```
 
 ---

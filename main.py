@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import threading
 import tkinter as tk
@@ -84,6 +85,8 @@ class XboxTUMApp:
                  bg="#9C27B0", fg="white", font=("Arial", 10, "bold")).pack(side="left", padx=5)
         tk.Button(botones_copiar_frame, text="Upload to Xbox", command=self.upload_to_xbox,
                  bg="#E91E63", fg="white", font=("Arial", 10, "bold")).pack(side="left", padx=5)
+        tk.Button(botones_copiar_frame, text="Extract ISO", command=self.extract_iso,
+                 bg="#607D8B", fg="white", font=("Arial", 10, "bold")).pack(side="left", padx=5)
         
         # Keep context menu as additional option
         self.menu_popup = tk.Menu(self.root, tearoff=0)
@@ -380,8 +383,6 @@ class XboxTUMApp:
 
     def _copiar_al_portapapeles(self, texto, tipo):
         """Helper function to copy text to clipboard robustly"""
-        print(f"[DEBUG] Attempting to copy {tipo}: '{texto}'")
-        
         try:
             # Clean and prepare text
             texto_limpio = str(texto).strip()
@@ -403,10 +404,8 @@ class XboxTUMApp:
                 clipboard_content = self.root.clipboard_get()
                 if clipboard_content == texto_limpio:
                     messagebox.showinfo("✅ Copied", f"{tipo}: {texto_limpio}\n\nCopied to clipboard successfully")
-                    print(f"[DEBUG] Copied successfully: '{clipboard_content}'")
                     return True
                 else:
-                    print(f"[DEBUG] Verification failed. Expected: '{texto_limpio}', Got: '{clipboard_content}'")
                     raise Exception("Clipboard verification failed")
             except tk.TclError:
                 # If can't verify, assume it worked
@@ -414,11 +413,9 @@ class XboxTUMApp:
                 return True
                 
         except Exception as e:
-            print(f"[DEBUG] Error in method 1: {e}")
             # Method 2: Use xclip as fallback (Linux)
             try:
                 import subprocess
-                print(f"[DEBUG] Trying xclip...")
                 process = subprocess.Popen(['xclip', '-selection', 'clipboard'], 
                                          stdin=subprocess.PIPE, 
                                          stdout=subprocess.PIPE, 
@@ -427,15 +424,11 @@ class XboxTUMApp:
                 
                 if process.returncode == 0:
                     messagebox.showinfo("✅ Copied", f"{tipo}: {texto_limpio}\n\nCopied to clipboard (xclip)")
-                    print(f"[DEBUG] xclip successful")
                     return True
                 else:
-                    print(f"[DEBUG] xclip failed: {stderr.decode()}")
                     raise Exception("xclip failed")
-            except FileNotFoundError:
-                print("[DEBUG] xclip is not installed")
-            except Exception as e2:
-                print(f"[DEBUG] Error in xclip: {e2}")
+            except (FileNotFoundError, Exception):
+                pass
             
             # Method 3: Show text for manual copying
             messagebox.showinfo("📋 Copy manually", 
@@ -908,7 +901,7 @@ class XboxTUMApp:
                                     game_name = parts[2]
                                     mapeo[filename] = {'title_id': title_id, 'game_name': game_name}
         except Exception as e:
-            self._log(f"[DEBUG] Error loading TU mapping: {e}")
+            self._log(f"Error loading TU mapping: {e}")
         return mapeo
     
     def _buscar_tus_descargados(self, carpeta_base):
@@ -931,11 +924,9 @@ class XboxTUMApp:
                         if file in mapeo_tus:
                             title_id = mapeo_tus[file]['title_id']
                             game_name = mapeo_tus[file]['game_name']
-                            self._log(f"[DEBUG] Found mapping: {file} -> {title_id} ({game_name})")
                         else:
                             # Fallback to filename extraction
                             title_id = self._extraer_title_id_de_archivo(file)
-                            self._log(f"[DEBUG] Extracted from filename: {file} -> {title_id}")
                         
                         # Find corresponding game in our list
                         juego_info = None
@@ -953,10 +944,9 @@ class XboxTUMApp:
                                 'media_id': juego_info.get('media_id'),
                                 'nombre_juego': juego_info.get('nombre')
                             })
-                            self._log(f"[DEBUG] TU matched: {file} -> {juego_info.get('nombre')}")
                         else:
-                            # Log unmatched TUs for debugging
-                            self._log(f"[DEBUG] TU found but no matching game: {file} (TitleID: {title_id})")
+                            # Log unmatched TUs
+                            self._log(f"TU found but no matching game: {file} (TitleID: {title_id})")
                             
             return tus_encontrados
             
@@ -1097,6 +1087,13 @@ class XboxTUMApp:
             messagebox.showwarning("Warning", "Please enter Xbox 360 IP address.")
             return
         
+        # Save FTP configuration regardless of connection result
+        username = self.entry_user.get().strip()
+        password = self.entry_pass.get().strip()
+        api_key = self.entry_apikey.get().strip()
+        self.save_config(username, password, api_key, xbox_ip, ftp_user, ftp_pass)
+        self._log("FTP configuration saved.")
+        
         try:
             self._log(f"Testing FTP connection to {xbox_ip}...")
             ftp = FTP()
@@ -1120,7 +1117,7 @@ class XboxTUMApp:
         except Exception as e:
             error_msg = f"FTP connection failed: {e}"
             self._log(error_msg)
-            messagebox.showerror("FTP Error", error_msg)
+            messagebox.showerror("FTP Error", f"{error_msg}\n\nNote: Configuration has been saved anyway.")
 
     def upload_to_xbox(self):
         """Upload TUs to Xbox 360 via FTP"""
@@ -1293,6 +1290,35 @@ class XboxTUMApp:
                         self._log(f"Created directory: {current_path}")
                     except:
                         pass  # Directory might already exist
+
+    def extract_iso(self):
+        """Launch the ISO extractor addon"""
+        try:
+            import subprocess
+            import os
+            
+            # Path to the extractor script
+            extractor_path = os.path.join("addons", "x360_extractor_gui.py")
+            
+            # Check if the script exists
+            if not os.path.exists(extractor_path):
+                messagebox.showerror("Error", f"ISO Extractor not found at:\n{extractor_path}\n\nPlease ensure the addon is installed.")
+                return
+            
+            self._log("Launching ISO Extractor addon...")
+            
+            # Launch the extractor as an independent process
+            if os.name == 'nt':  # Windows
+                subprocess.Popen([sys.executable, extractor_path], creationflags=subprocess.CREATE_NEW_CONSOLE)
+            else:  # Linux/macOS
+                subprocess.Popen([sys.executable, extractor_path])
+            
+            self._log("ISO Extractor launched successfully.")
+            
+        except Exception as e:
+            error_msg = f"Error launching ISO Extractor: {e}"
+            self._log(error_msg)
+            messagebox.showerror("Error", error_msg)
 
 if __name__ == "__main__":
     root = tk.Tk()

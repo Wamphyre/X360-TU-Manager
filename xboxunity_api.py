@@ -268,7 +268,7 @@ def descargar_tu(url, destino, progreso_callback=None):
                 from urllib.parse import urlparse, parse_qs
                 parsed_url = urlparse(url)
                 query_params = parse_qs(parsed_url.query)
-                print(f"[DEBUG] URL query params: {query_params}")
+
                 
                 # For now, use the provided destino filename
                 original_filename = os.path.basename(destino)
