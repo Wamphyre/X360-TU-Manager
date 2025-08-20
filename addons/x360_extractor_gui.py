@@ -46,9 +46,22 @@ class X360CuratorGUI:
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
         
-        # Title
-        title_label = ttk.Label(main_frame, text="X360 Extractor GUI", 
-                               font=("Arial", 16, "bold"))
+        # Title area: show only the header logo centered (no text)
+        title_label = None
+        try:
+            assets_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
+            logo2_path = os.path.normpath(os.path.join(assets_dir, "logo2.png"))
+            if os.path.isfile(logo2_path):
+                # Use PhotoImage for PNG support in Tkinter and keep a reference
+                self.logo_header_img = tk.PhotoImage(file=logo2_path)
+                title_label = ttk.Label(main_frame, image=self.logo_header_img)
+        except Exception:
+            title_label = None
+
+        # If logo wasn't loaded, create an empty spacer label to preserve layout
+        if not title_label:
+            title_label = ttk.Label(main_frame, text="", padding=(0,10))
+
         title_label.grid(row=0, column=0, columnspan=3, pady=(0, 20))
         
         # Source directory

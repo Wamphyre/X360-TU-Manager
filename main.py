@@ -109,6 +109,18 @@ class XboxTUMApp:
         tk.Button(botones_frame, text="Select Games Folder", command=self.select_folder).pack(side="left", padx=5)
         tk.Button(botones_frame, text="Search and Download TUs", command=self.buscar_y_descargar_tus).pack(side="left", padx=5)
 
+        # Optional: display project logo at the bottom-right next to the action buttons
+        try:
+            logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo1.png")
+            if os.path.isfile(logo_path):
+                self.logo_main_img = tk.PhotoImage(file=logo_path)
+                logo_label = tk.Label(botones_frame, image=self.logo_main_img, bd=0)
+                # Pack to the right so it appears on the far right (corner)
+                logo_label.pack(side="right", padx=10)
+        except Exception:
+            # If logo can't be loaded, ignore and continue
+            pass
+
         # Load config
         self.load_config()
 
