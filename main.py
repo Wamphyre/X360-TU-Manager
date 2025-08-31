@@ -8,12 +8,17 @@ from ftplib import FTP
 from xboxunity_api import login_xboxunity, buscar_tus, descargar_tu, probar_conectividad
 from xex_reader import obtener_info_juego
 
-CONFIG_FILE = "config.json"
+# Save config in user's home directory to avoid read-only filesystem issues
+CONFIG_FILE = os.path.expanduser("~/.x360-tu-manager-config.json")
 
 class XboxTUMApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Xbox 360 TU Manager")
+        
+        # Configure window properties for better Linux integration
+        self._configure_window_properties()
+        
         self.token = None
         self.api_key = None
         self.juegos = []
@@ -123,6 +128,61 @@ class XboxTUMApp:
 
         # Load config
         self.load_config()
+    
+    def _configure_window_properties(self):
+        """Configure window properties for better Linux integration"""
+        # Set window class for Linux window managers
+        try:
+            self.root.wm_class("X360TUManager", "X360 TU Manager")
+        except:
+            pass
+        
+        # Set application icon
+        self._set_application_icon()
+    
+    def _set_application_icon(self):
+        """Set application icon"""
+        assets_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+        
+        # Try to load PNG icon
+        try:
+            icon_png = os.path.join(assets_dir, "icon.png")
+            if os.path.isfile(icon_png):
+                # Try with PIL for better quality
+                try:
+                    from PIL import Image, ImageTk
+                    img = Image.open(icon_png)
+                    # Resize to reasonable size for window icon
+                    img = img.resize((64, 64), Image.Resampling.LANCZOS)
+                    self.icon_image = ImageTk.PhotoImage(img)
+                    self.root.iconphoto(True, self.icon_image)
+                    return
+                except ImportError:
+                    # PIL not available, use tkinter PhotoImage
+                    self.icon_image = tk.PhotoImage(file=icon_png)
+                    self.root.iconphoto(True, self.icon_image)
+                    return
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        
+        # Fallback: create simple programmatic icon
+        try:
+            self.fallback_icon = tk.PhotoImage(width=32, height=32)
+            # Simple green square with white X
+            for x in range(32):
+                for y in range(32):
+                    if x < 2 or x > 29 or y < 2 or y > 29:
+                        self.fallback_icon.put("#4CAF50", (x, y))
+                    elif (abs(x - y) < 2 or abs(x + y - 31) < 2):
+                        self.fallback_icon.put("#FFFFFF", (x, y))
+                    else:
+                        self.fallback_icon.put("#2E7D32", (x, y))
+            self.root.iconphoto(True, self.fallback_icon)
+        except Exception:
+            # If all fails, continue without icon
+            pass
 
     def save_config(self, username, password, api_key, xbox_ip="", ftp_user="", ftp_pass=""):
         config_data = {

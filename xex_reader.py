@@ -2,13 +2,33 @@ import subprocess
 import re
 import os
 import platform
+import sys
 
 # Detect XexTool.exe path regardless of case sensitivity
 def encontrar_xextool():
-    for carpeta in ["XexTool", "xextool"]:
-        posible = os.path.join(carpeta, "XexTool.exe")
+    # Get the directory where this script is running from
+    if getattr(sys, 'frozen', False):
+        # Running as PyInstaller bundle
+        base_dir = sys._MEIPASS
+    else:
+        # Running as normal Python script
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Check multiple possible locations
+    possible_paths = [
+        # PyInstaller _internal directory
+        os.path.join(base_dir, "xextool", "XexTool.exe"),
+        # Current directory
+        os.path.join("xextool", "XexTool.exe"),
+        os.path.join("XexTool", "XexTool.exe"),
+        # Relative to script location
+        os.path.join(base_dir, "..", "xextool", "XexTool.exe"),
+    ]
+    
+    for posible in possible_paths:
         if os.path.exists(posible):
             return os.path.abspath(posible)
+    
     raise FileNotFoundError("XexTool.exe not found")
 
 XEXTOOL_PATH = encontrar_xextool()
