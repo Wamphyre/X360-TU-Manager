@@ -3,58 +3,118 @@
 # X360 TU Manager - AppImage builder script
 # Creates a portable AppImage using Python directly (no PyInstaller needed)
 
-set -e
+set -Eeuo pipefail
+IFS=$'\n\t'
+trap 'echo "Error on line $LINENO" >&2' ERR
 
-APP_NAME="X360_TU_Manager"
-APP_VERSION="1.0.0"
+APP_NAME="${APP_NAME:-X360_TU_Manager}"
+APP_VERSION="${APP_VERSION:-$(git describe --tags --always 2>/dev/null || echo 1.0.0)}"
+ARCH="${ARCH:-$(uname -m)}"
+APPDIR="AppDir"
+PYTHON="${PYTHON:-python3}"
 
 echo "🚀 Building X360 TU Manager AppImage (Python-based)..."
 
+# Preflight checks
+if ! command -v "$PYTHON" >/dev/null 2>&1; then
+  echo "❌ $PYTHON not found. Please install Python 3." >&2
+  exit 1
+fi
+
 # Clean previous builds
 echo "🧹 Cleaning previous builds..."
-rm -rf AppDir/ *.AppImage
+rm -rf "$APPDIR" *.AppImage
 
 # Create AppDir structure
 echo "📁 Creating AppDir structure..."
-mkdir -p AppDir/usr/bin
-mkdir -p AppDir/usr/lib/python3/dist-packages
-mkdir -p AppDir/usr/share/applications
-mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
-mkdir -p AppDir/opt/x360-tu-manager
+mkdir -p "$APPDIR/usr/bin"
+mkdir -p "$APPDIR/usr/lib/python3/dist-packages"
+mkdir -p "$APPDIR/usr/share/applications"
+mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+mkdir -p "$APPDIR/opt/x360-tu-manager"
 
 
 # Copy application files
-echo "� Cnopying application files..."
-cp -r assets/ AppDir/opt/x360-tu-manager/
-cp -r xextool/ AppDir/opt/x360-tu-manager/
-cp -r addons/ AppDir/opt/x360-tu-manager/
-cp *.py AppDir/opt/x360-tu-manager/
+echo "📄 Copying application files..."
+cp -r assets/ "$APPDIR/opt/x360-tu-manager/"
+cp -r xextool/ "$APPDIR/opt/x360-tu-manager/"
+cp -r addons/ "$APPDIR/opt/x360-tu-manager/"
+cp *.py "$APPDIR/opt/x360-tu-manager/"
 
 
 # Install Python dependencies locally
-echo "📦 Installing Python dependencies..."
-pip install --target AppDir/usr/lib/python3/dist-packages -r requirements.txt
-
-# Install Pillow for icon creation
-echo "🎨 Installing Pillow for icon creation..."
-pip install --target AppDir/usr/lib/python3/dist-packages Pillow
+echo "📦 Installing Python dependencies (into AppDir)..."
+if [ -f requirements.txt ]; then
+    "$PYTHON" -m pip install --disable-pip-version-check --no-cache-dir --no-compile \
+        --target "$APPDIR/usr/lib/python3/dist-packages" -r requirements.txt
+else
+    echo "ℹ️ requirements.txt not found; skipping dependency install"
+fi
 
 # Verify Python environment
 echo "🔍 Verifying Python environment..."
-if [ -d "AppDir/usr/lib/python3/dist-packages" ]; then
+if [ -d "$APPDIR/usr/lib/python3/dist-packages" ]; then
     echo "  ✅ Python packages directory created"
-    echo "  📦 Installed packages:"
-    ls AppDir/usr/lib/python3/dist-packages/ | head -5
+    echo "  📦 Some installed packages:"
+    ls "$APPDIR/usr/lib/python3/dist-packages/" | head -5 || true
 else
-    echo "  ❌ Python packages directory not found"
+    echo "  ⚠️  Python packages directory not found (may be fine if no deps)"
 fi
 
-# Check if requests is installed
-if [ -d "AppDir/usr/lib/python3/dist-packages/requests" ]; then
+# Check if requests is installed (optional)
+if [ -d "$APPDIR/usr/lib/python3/dist-packages/requests" ]; then
     echo "  ✅ Requests library found"
 else
-    echo "  ❌ Requests library not found"
+    echo "  ℹ️ Requests library not found in AppDir (will rely on system if available)"
 fi
+
+# Trim caches to reduce size
+if [ -d "$APPDIR/usr/lib/python3/dist-packages" ]; then
+    echo "🧽 Removing __pycache__ directories..."
+    find "$APPDIR/usr/lib/python3/dist-packages" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+fi
+
+# Bundle system Python runtime into AppDir
+echo "🐍 Bundling system Python runtime into AppDir..."
+PYBIN="$(command -v "$PYTHON")"
+PYMAJMIN="$($PYTHON -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+STDLIB_DIR="$($PYTHON -c 'import sysconfig; print(sysconfig.get_paths()["stdlib"])')"
+LIBPY_SO="$($PYTHON -c 'import sys, sysconfig, glob, os; libdir=sysconfig.get_config_var("LIBDIR") or "/usr/lib"; stem=f"libpython{sys.version_info.major}.{sys.version_info.minor}"; cands=glob.glob(os.path.join(libdir, stem+"*.so*")); print(cands[0] if cands else "")')"
+
+mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib" "$APPDIR/usr/share"
+cp -L "$PYBIN" "$APPDIR/usr/bin/python3"
+# Copy Python standard library (e.g., /usr/lib/python3.X)
+if [ -d "$STDLIB_DIR" ]; then
+  cp -a "$STDLIB_DIR" "$APPDIR/usr/lib/" 2>/dev/null || true
+else
+  echo "⚠️  Could not locate Python stdlib via sysconfig; skipping copy"
+fi
+# Copy libpython shared library if available
+if [ -n "$LIBPY_SO" ] && [ -f "$LIBPY_SO" ]; then
+  cp -L "$LIBPY_SO" "$APPDIR/usr/lib/" 2>/dev/null || true
+fi
+
+# Bundle Tk/Tcl runtime (shared libs and scripts)
+echo "🎛  Bundling Tk/Tcl runtime..."
+if [ -d "/usr/share/tcltk" ]; then
+  cp -a "/usr/share/tcltk" "$APPDIR/usr/share/" 2>/dev/null || true
+fi
+for libpat in libtk libtcl; do
+  for f in /usr/lib*/${libpat}*.so*; do
+    [ -e "$f" ] && cp -L "$f" "$APPDIR/usr/lib/" 2>/dev/null || true
+  done
+done
+
+# Quick non-fatal check for embedded Python runtime
+APPABS="$(readlink -f "$APPDIR")"
+env LD_LIBRARY_PATH="$APPABS/usr/lib:${LD_LIBRARY_PATH:-}" PYTHONHOME="$APPABS/usr" TCL_LIBRARY="$APPABS/usr/share/tcltk/tcl8.6" TK_LIBRARY="$APPABS/usr/share/tcltk/tk8.6" \
+  "$APPABS/usr/bin/python3" - << 'PY' >/dev/null 2>&1 || echo "⚠️  Embedded Python quick check skipped/failed (will rely on runtime)"
+try:
+    import sys, tkinter, ssl
+    print("OK")
+except Exception:
+    pass
+PY
 
 # Note: Wine will be used from the system installation
 echo "🍷 Wine will be used from system installation"
@@ -62,7 +122,7 @@ echo "  ⚠️  Make sure Wine is installed on target systems"
 
 # Create main executable script
 echo "🔧 Creating launcher script..."
-cat > AppDir/usr/bin/x360-tu-manager << 'EOF'
+cat > "$APPDIR/usr/bin/x360-tu-manager" << 'EOF'
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "${0}")")"
 APPDIR="$(dirname "$(dirname "$HERE")")"
@@ -73,6 +133,13 @@ echo "📁 AppDir: $APPDIR"
 # Set Python path to include our dependencies
 export PYTHONPATH="$APPDIR/usr/lib/python3/dist-packages:$PYTHONPATH"
 echo "🐍 Python path: $PYTHONPATH"
+
+# Configure embedded Python runtime
+export PYTHONHOME="$APPDIR/usr"
+export LD_LIBRARY_PATH="$APPDIR/usr/lib:${LD_LIBRARY_PATH:-}"
+# Set Tk/Tcl paths if present
+[ -d "$APPDIR/usr/share/tcltk/tcl8.6" ] && export TCL_LIBRARY="$APPDIR/usr/share/tcltk/tcl8.6"
+[ -d "$APPDIR/usr/share/tcltk/tk8.6" ] && export TK_LIBRARY="$APPDIR/usr/share/tcltk/tk8.6"
 
 # Verify Python dependencies
 if [ -d "$APPDIR/usr/lib/python3/dist-packages/requests" ]; then
@@ -111,12 +178,12 @@ fi
 
 # Run the application
 echo "🎮 Starting application..."
-exec python3 main.py "$@"
+exec "$APPDIR/usr/bin/python3" main.py "$@"
 EOF
-chmod +x AppDir/usr/bin/x360-tu-manager
+chmod +x "$APPDIR/usr/bin/x360-tu-manager"
 
 # Create desktop file
-cat > AppDir/usr/share/applications/x360-tu-manager.desktop << EOF
+cat > "$APPDIR/usr/share/applications/x360-tu-manager.desktop" << EOF
 [Desktop Entry]
 Type=Application
 Name=X360 TU Manager
@@ -128,90 +195,24 @@ Terminal=false
 EOF
 
 # Create application icons
-echo "🎨 Creating application icons..."
+echo "🎨 Preparing application icon..."
 
-# First, try to use the existing icon.png if available
+# Use existing icon if available; otherwise, create a tiny placeholder
+mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
 if [ -f "assets/icon.png" ]; then
     echo "📋 Using existing icon.png from assets..."
-    # Create icon directories for different sizes
-    mkdir -p AppDir/usr/share/icons/hicolor/{16x16,32x32,48x48,64x64,128x128,256x256,512x512}/apps
-    
-    # Use Python to resize the existing icon to different sizes
-    PYTHONPATH="AppDir/usr/lib/python3/dist-packages:$PYTHONPATH" python3 << 'EOF'
-from PIL import Image
-import os
-
-# Load the original icon
-original_icon = Image.open('assets/icon.png')
-print(f"📏 Original icon size: {original_icon.size}")
-
-# Create different sizes for Ubuntu integration
-sizes = [16, 32, 48, 64, 128, 256, 512]
-
-for size in sizes:
-    # Resize with high quality
-    resized = original_icon.resize((size, size), Image.Resampling.LANCZOS)
-    
-    # Save to appropriate directory
-    icon_dir = f'AppDir/usr/share/icons/hicolor/{size}x{size}/apps'
-    os.makedirs(icon_dir, exist_ok=True)
-    icon_path = f'{icon_dir}/x360-tu-manager.png'
-    resized.save(icon_path)
-    print(f"✅ Created {size}x{size} icon")
-
-print("🎨 All icon sizes created successfully")
-EOF
+    install -m 0644 assets/icon.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/x360-tu-manager.png"
+    cp "$APPDIR/usr/share/icons/hicolor/256x256/apps/x360-tu-manager.png" "$APPDIR/"
 else
-    echo "🎨 Creating fallback icon..."
-    # Create a fallback icon using Python
-    PYTHONPATH="AppDir/usr/lib/python3/dist-packages:$PYTHONPATH" python3 << 'EOF'
-from PIL import Image, ImageDraw, ImageFont
-import os
-
-# Create icon directories
-sizes = [16, 32, 48, 64, 128, 256, 512]
-for size in sizes:
-    icon_dir = f'AppDir/usr/share/icons/hicolor/{size}x{size}/apps'
-    os.makedirs(icon_dir, exist_ok=True)
-
-# Create base 256x256 image
-base_img = Image.new('RGB', (256, 256), color='#2E8B57')
-draw = ImageDraw.Draw(base_img)
-
-# Draw Xbox controller-like shape
-draw.rectangle([50, 100, 206, 180], fill='#1F5F3F', outline='#FFFFFF', width=3)
-draw.rectangle([70, 120, 90, 140], fill='#FFFFFF')
-draw.rectangle([80, 110, 100, 150], fill='#FFFFFF')
-draw.ellipse([170, 110, 190, 130], fill='#FF4444', outline='#FFFFFF', width=2)
-draw.ellipse([180, 120, 200, 140], fill='#44FF44', outline='#FFFFFF', width=2)
-draw.ellipse([160, 120, 180, 140], fill='#4444FF', outline='#FFFFFF', width=2)
-draw.ellipse([170, 130, 190, 150], fill='#FFFF44', outline='#FFFFFF', width=2)
-
-# Add text
-try:
-    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
-except:
-    font = ImageFont.load_default()
-
-text = "X360 TU"
-bbox = draw.textbbox((0, 0), text, font=font)
-text_width = bbox[2] - bbox[0]
-x = (256 - text_width) // 2
-draw.text((x, 200), text, fill='#FFFFFF', font=font)
-
-# Create all sizes
-for size in sizes:
-    resized = base_img.resize((size, size), Image.Resampling.LANCZOS)
-    icon_path = f'AppDir/usr/share/icons/hicolor/{size}x{size}/apps/x360-tu-manager.png'
-    resized.save(icon_path)
-    print(f"✅ Created {size}x{size} fallback icon")
-
-print("🎨 Fallback icons created successfully")
-EOF
+    echo "🧪 No icon found, creating minimal placeholder..."
+    ICON_OUT="$APPDIR/usr/share/icons/hicolor/256x256/apps/x360-tu-manager.png"
+    # 1x1 transparent PNG (base64)
+    printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=' | base64 -d > "$ICON_OUT"
+    cp "$ICON_OUT" "$APPDIR/"
 fi
 
 # Create AppRun
-cat > AppDir/AppRun << 'EOF'
+cat > "$APPDIR/AppRun" << 'EOF'
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "${0}")")"
 export APPDIR="$HERE"
@@ -220,44 +221,72 @@ export APPDIR="$HERE"
 export PATH="${HERE}/usr/bin:${PATH}"
 export PYTHONPATH="${HERE}/usr/lib/python3/dist-packages:${PYTHONPATH}"
 export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS}"
+# Embedded Python runtime
+export PYTHONHOME="${HERE}/usr"
+export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
+# Optional Tk/Tcl paths
+[ -d "${HERE}/usr/share/tcltk/tcl8.6" ] && export TCL_LIBRARY="${HERE}/usr/share/tcltk/tcl8.6"
+[ -d "${HERE}/usr/share/tcltk/tk8.6" ] && export TK_LIBRARY="${HERE}/usr/share/tcltk/tk8.6"
 
 # Run the application
 exec "${HERE}/usr/bin/x360-tu-manager" "$@"
 EOF
-chmod +x AppDir/AppRun
+chmod +x "$APPDIR/AppRun"
 
 # Copy desktop file and icon to root (required by AppImage)
-cp AppDir/usr/share/applications/x360-tu-manager.desktop AppDir/
-cp AppDir/usr/share/icons/hicolor/256x256/apps/x360-tu-manager.png AppDir/ 2>/dev/null || \
-cp AppDir/usr/share/icons/hicolor/128x128/apps/x360-tu-manager.png AppDir/ 2>/dev/null || \
-echo "x360-tu-manager" > AppDir/x360-tu-manager.png
+cp "$APPDIR/usr/share/applications/x360-tu-manager.desktop" "$APPDIR/"
+cp "$APPDIR/usr/share/icons/hicolor/256x256/apps/x360-tu-manager.png" "$APPDIR/" 2>/dev/null || \
+cp "$APPDIR/usr/share/icons/hicolor/128x128/apps/x360-tu-manager.png" "$APPDIR/" 2>/dev/null || \
+cp "$APPDIR/usr/share/icons/hicolor/64x64/apps/x360-tu-manager.png" "$APPDIR/" 2>/dev/null || \
+true
+
+# Select appimagetool based on architecture
+case "$ARCH" in
+  x86_64|amd64)
+    APPIMAGETOOL_FILE="appimagetool-x86_64.AppImage"
+    APPIMAGETOOL_URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+    APPIMAGE_ARCH="x86_64"
+    ;;
+  aarch64|arm64)
+    APPIMAGETOOL_FILE="appimagetool-aarch64.AppImage"
+    APPIMAGETOOL_URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-aarch64.AppImage"
+    APPIMAGE_ARCH="aarch64"
+    ;;
+  *)
+    echo "⚠️  Unknown architecture '$ARCH'; defaulting to x86_64 appimagetool and label"
+    APPIMAGETOOL_FILE="appimagetool-x86_64.AppImage"
+    APPIMAGETOOL_URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+    APPIMAGE_ARCH="x86_64"
+    ;;
+esac
 
 # Download appimagetool if not exists
-if [ ! -f "appimagetool-x86_64.AppImage" ]; then
-    echo "⬇️  Downloading appimagetool..."
-    wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
-    chmod +x appimagetool-x86_64.AppImage
+if [ ! -f "$APPIMAGETOOL_FILE" ]; then
+    echo "⬇️  Downloading $APPIMAGETOOL_FILE..."
+    wget -q "$APPIMAGETOOL_URL"
+    chmod +x "$APPIMAGETOOL_FILE"
 fi
 
 # Build AppImage
-echo "🔧 Building AppImage..."
-ARCH=x86_64 ./appimagetool-x86_64.AppImage AppDir "${APP_NAME}-${APP_VERSION}-x86_64.AppImage"
+OUTPUT_FILE="${APP_NAME}-${APP_VERSION}-${APPIMAGE_ARCH}.AppImage"
+echo "🔧 Building AppImage ($OUTPUT_FILE)..."
+ARCH="$APPIMAGE_ARCH" ./$APPIMAGETOOL_FILE "$APPDIR" "$OUTPUT_FILE"
 
 # Make executable
-chmod +x "${APP_NAME}-${APP_VERSION}-x86_64.AppImage"
+chmod +x "$OUTPUT_FILE"
 
 echo "✅ AppImage created successfully!"
-echo "📦 File: ${APP_NAME}-${APP_VERSION}-x86_64.AppImage"
-echo "🚀 Run with: ./${APP_NAME}-${APP_VERSION}-x86_64.AppImage"
+echo "📦 File: $OUTPUT_FILE"
+echo "🚀 Run with: ./$(basename "$OUTPUT_FILE")"
 
 # Show file info
-if [ -f "${APP_NAME}-${APP_VERSION}-x86_64.AppImage" ]; then
+if [ -f "$OUTPUT_FILE" ]; then
     echo "✅ AppImage ready!"
-    ls -lh "${APP_NAME}-${APP_VERSION}-x86_64.AppImage"
+    ls -lh "$OUTPUT_FILE"
     echo ""
     echo "💡 This AppImage includes:"
-    echo "   - Python runtime environment"
-    echo "   - All required dependencies"
+    echo "   - Embedded Python 3 runtime + stdlib + Tk/Tcl (no system Python needed)"
+    echo "   - Application files and assets"
     echo "   - XexTool.exe and assets"
     echo "   - Uses system Wine (install with: sudo apt install wine)"
     echo "   - No installation required!"

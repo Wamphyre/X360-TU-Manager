@@ -24,6 +24,26 @@ class X360CuratorGUI:
         self.root.geometry("800x600")
         self.root.resizable(True, True)
         
+        # Set application class name for Linux window managers
+        try:
+            self.root.wm_class("X360Extractor", "X360Extractor")
+        except AttributeError:
+            # Fallback for older Tkinter versions
+            try:
+                self.root.tk.call('wm', 'class', self.root._w, "X360Extractor")
+            except:
+                pass
+        
+        # Set application icon (simple method)
+        try:
+            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "icon.png")
+            if os.path.isfile(icon_path):
+                self.icon_image = tk.PhotoImage(file=icon_path)
+                self.root.iconphoto(True, self.icon_image)
+        except Exception:
+            # If icon can't be loaded, continue without it
+            pass
+        
         # Variables
         self.source_dir = tk.StringVar()
         self.output_dir = tk.StringVar()
@@ -34,6 +54,7 @@ class X360CuratorGUI:
         
         # Setup interface
         self.setup_ui()
+        
     
     def setup_ui(self):
         """Setup user interface"""

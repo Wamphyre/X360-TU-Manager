@@ -31,7 +31,15 @@ def encontrar_xextool():
     
     raise FileNotFoundError("XexTool.exe not found")
 
-XEXTOOL_PATH = encontrar_xextool()
+# Lazy cache for XexTool path
+XEXTOOL_PATH_CACHE = None
+
+def get_xextool_path():
+    global XEXTOOL_PATH_CACHE
+    if XEXTOOL_PATH_CACHE and os.path.exists(XEXTOOL_PATH_CACHE):
+        return XEXTOOL_PATH_CACHE
+    XEXTOOL_PATH_CACHE = encontrar_xextool()
+    return XEXTOOL_PATH_CACHE
 
 def obtener_media_id(ruta_xex):
     """Get only MediaID (function kept for compatibility)"""
@@ -43,13 +51,19 @@ def obtener_info_juego(ruta_xex):
     # Auto-detect operating system and build appropriate command
     system = platform.system().lower()
     
+    try:
+        xextool_path = get_xextool_path()
+    except FileNotFoundError:
+        print("[ERROR] XexTool.exe not found. Place it under xextool/ and retry.")
+        return None
+
     if system == "windows":
         # Windows: Run XexTool.exe natively
-        cmd = [XEXTOOL_PATH, "-l", ruta_xex]
+        cmd = [xextool_path, "-l", ruta_xex]
         print(f"[INFO] Running on Windows - executing XexTool natively")
     else:
         # Linux/macOS: Use Wine to run XexTool.exe
-        cmd = ["wine", XEXTOOL_PATH, "-l", ruta_xex]
+        cmd = ["wine", xextool_path, "-l", ruta_xex]
         print(f"[INFO] Running on {system.title()} - using Wine to execute XexTool")
     
     try:

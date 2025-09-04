@@ -195,6 +195,10 @@ class XboxTUMApp:
         }
         with open(CONFIG_FILE, "w") as f:
             json.dump(config_data, f)
+        try:
+            os.chmod(CONFIG_FILE, 0o600)
+        except Exception:
+            pass
 
     def load_config(self):
         if os.path.exists(CONFIG_FILE):
@@ -285,8 +289,7 @@ class XboxTUMApp:
         
         total_files = len(xex_files)
         self._log(f"Reading MediaID...please wait ({total_files} games found)")
-        self.progress["value"] = 0
-        self.progress["maximum"] = total_files
+        self._progress_set(value=0, maximum=total_files)
         
         for idx, xex_path in enumerate(xex_files, 1):
             game_name = os.path.basename(os.path.dirname(xex_path))
@@ -305,10 +308,9 @@ class XboxTUMApp:
             else:
                 self._log(f"  ERROR: Could not read information from '{game_name}'")
             
-            self.progress["value"] = idx
-            self.root.update_idletasks()
+            self._progress_set(value=idx)
 
-        self.progress["value"] = 0
+        self._progress_set(value=0)
         self._log(f"Detected {len(self.juegos)} games with valid information.")
 
     def buscar_y_descargar_tus(self):
@@ -333,8 +335,7 @@ class XboxTUMApp:
         errores = 0
 
         self._log("Starting TU search and download...\n")
-        self.progress["value"] = 0
-        self.progress["maximum"] = total_juegos
+        self._progress_set(value=0, maximum=total_juegos)
 
         for idx, juego in enumerate(self.juegos, 1):
             nombre = juego["nombre"]
@@ -354,13 +355,11 @@ class XboxTUMApp:
             if tus is None:
                 self._log(f"  ERROR querying TUs for {nombre}.")
                 errores += 1
-                self.progress["value"] = idx
-                self.root.update_idletasks()
+                self._progress_set(value=idx)
                 continue
             elif len(tus) == 0:
                 self._log(f"  No TUs found for {nombre}.")
-                self.progress["value"] = idx
-                self.root.update_idletasks()
+                self._progress_set(value=idx)
                 continue
 
             juegos_con_tu += 1
@@ -377,8 +376,7 @@ class XboxTUMApp:
             except Exception as e:
                 self._log(f"  ERROR creating folder for {nombre}: {e}")
                 errores += 1
-                self.progress["value"] = idx
-                self.root.update_idletasks()
+                self._progress_set(value=idx)
                 continue
 
             for tu in tus:
@@ -389,8 +387,7 @@ class XboxTUMApp:
                 def actualizar_progreso(descargado, total):
                     if total > 0:
                         porcentaje = (descargado / total) * 100
-                        self.progress["value"] = porcentaje
-                        self.root.update_idletasks()
+                        self._progress_set(maximum=100, value=porcentaje)
 
                 self._log(f"    Downloading {filename} to {nombre_carpeta}/...")
                 exito, original_filename = descargar_tu(url, destino, progreso_callback=actualizar_progreso)
@@ -409,17 +406,16 @@ class XboxTUMApp:
                     self._log(f"    ERROR downloading {filename}.")
                     errores += 1
 
-            self.progress["value"] = idx
-            self.root.update_idletasks()
+            self._progress_set(maximum=total_juegos, value=idx)
 
         self._log("\nSummary:\n")
         self._log(f"Games processed: {total_juegos}")
         self._log(f"Games with TUs found: {juegos_con_tu}")
         self._log(f"TUs downloaded: {total_tus_descargados}")
         self._log(f"Errors: {errores}")
-        self.progress["value"] = 0
+        self._progress_set(value=0)
 
-        messagebox.showinfo("Process completed", "TU search and download has finished.")
+        self._message_info("Process completed", "TU search and download has finished.")
 
     def copy_media_id(self):
         self._copy_id_from_tree(1, "MediaID")
@@ -762,23 +758,30 @@ class XboxTUMApp:
         
         # Add game rows
         for i, juego in enumerate(self.juegos, 1):
-            nombre = juego.get('nombre', 'Unknown')
-            media_id = juego.get('media_id', 'N/A')
-            title_id = juego.get('title_id', 'N/A')
+            # Safely extract values and normalize to strings
+            nombre_val = juego.get('nombre')
+            media_id_val = juego.get('media_id')
+            title_id_val = juego.get('title_id')
+
+            nombre = str(nombre_val) if nombre_val is not None else 'Unknown'
+            media_id_str = str(media_id_val).strip() if media_id_val else 'N/A'
+            title_id_str = str(title_id_val).strip() if title_id_val else 'N/A'
             
-            # Escape HTML characters and quotes for JavaScript
+            # Escape HTML characters and quotes for HTML/JavaScript
+            nombre_html = nombre.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
             nombre_escaped = nombre.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace("'", "\\'")
-            media_id_str = str(media_id) if media_id != 'N/A' else 'N/A'
-            title_id_str = str(title_id) if title_id != 'N/A' else 'N/A'
+            media_id_escaped = media_id_str.replace("'", "\\'")
+            title_id_escaped = title_id_str.replace("'", "\\'")
             
-            # Create copy buttons conditionally
-            media_btn = f'<button class="copy-btn" onclick="copyText(\'{media_id_str}\')" title="Copy MediaID">📋</button>' if media_id != 'N/A' else ''
-            title_btn = f'<button class="copy-btn" onclick="copyText(\'{title_id_str}\')" title="Copy TitleID">📋</button>' if title_id != 'N/A' else ''
+            # Create copy buttons conditionally (based on normalized strings)
+            media_btn = f'<button class="copy-btn" onclick="copyText(\'{media_id_escaped}\')" title="Copy MediaID">📋</button>' if media_id_str != 'N/A' else ''
+            title_btn = f'<button class="copy-btn" onclick="copyText(\'{title_id_escaped}\')" title="Copy TitleID">📋</button>' if title_id_str != 'N/A' else ''
+            
             
             html_template += f"""
                     <tr>
                         <td>{i}</td>
-                        <td class="game-name">{nombre}</td>
+                        <td class="game-name">{nombre_html}</td>
                         <td>
                             <span class="id-code">{media_id_str}</span>
                             {media_btn}
@@ -788,7 +791,7 @@ class XboxTUMApp:
                             {title_btn}
                         </td>
                         <td>
-                            <button class="copy-btn" onclick="copyGame('{nombre_escaped}', '{media_id_str}', '{title_id_str}')" title="Copy complete information">📄 All</button>
+                            <button class="copy-btn" onclick="copyGame('{nombre_escaped}', '{media_id_escaped}', '{title_id_escaped}')" title="Copy complete information">📄 All</button>
                         </td>
                     </tr>"""
         
@@ -824,6 +827,7 @@ class XboxTUMApp:
                 
                 rows[i].style.display = found ? '' : 'none';
             }}
+            updateStatistics();
         }}
         
         function copyText(texto) {{
@@ -843,7 +847,7 @@ class XboxTUMApp:
         }}
         
         function copyGame(nombre, mediaId, titleId) {{
-            const info = `Game: ${{nombre}}\\nMediaID: ${{mediaId}}\\nTitleID: ${{titleId}}`;
+            const info = `Game: ${{nombre}}\nMediaID: ${{mediaId}}\nTitleID: ${{titleId}}`;
             copyText(info);
         }}
         
@@ -888,10 +892,10 @@ class XboxTUMApp:
             }} else {{
                 document.title = 'Xbox 360 Games List - X360 TU Manager';
             }}
-        }}
+      }}
         
-        // Actualizar estadísticas cuando se filtra
-        document.getElementById('searchBox').addEventListener('input', actualizarEstadisticas);
+        // Update statistics on input
+        document.getElementById('searchBox').addEventListener('input', filterGames);
     </script>
 </body>
 </html>"""
@@ -1057,8 +1061,7 @@ class XboxTUMApp:
             os.makedirs(cache_path, exist_ok=True)
             
             total_tus = len(tus_encontrados)
-            self.progress["value"] = 0
-            self.progress["maximum"] = total_tus
+            self._progress_set(value=0, maximum=total_tus)
             
             tus_procesados = 0
             errores = 0
@@ -1100,10 +1103,9 @@ class XboxTUMApp:
                     self._log(f"  ❌ ERROR processing {tu_info['archivo']}: {e}")
                     errores += 1
                 
-                self.progress["value"] = idx
-                self.root.update_idletasks()
+                self._progress_set(value=idx)
             
-            self.progress["value"] = 0
+            self._progress_set(value=0)
             
             self._log("\n" + "="*50)
             self._log("USB PREPARATION COMPLETED")
@@ -1119,7 +1121,7 @@ class XboxTUMApp:
                 self._log("2. Copy the 'Cache' folder to the root of your USB drive")
             self._log("3. Connect USB to Xbox 360 and install from System Settings > Memory")
             
-            messagebox.showinfo(
+            self._message_info(
                 "USB Prepared", 
                 f"USB structure created successfully:\n\n"
                 f"📁 Location: {carpeta_usb}\n"
@@ -1133,7 +1135,7 @@ class XboxTUMApp:
         except Exception as e:
             error_msg = f"Error creating USB structure: {e}"
             self._log(error_msg)
-            messagebox.showerror("Error", error_msg)
+            self._message_error("Error", error_msg)
 
     def _log(self, texto):
         def actualizar_log():
@@ -1148,6 +1150,29 @@ class XboxTUMApp:
             self.root.after(0, actualizar_log)
         except:
             actualizar_log()
+
+    def _progress_set(self, value=None, maximum=None):
+        def apply():
+            if maximum is not None:
+                self.progress["maximum"] = maximum
+            if value is not None:
+                self.progress["value"] = value
+        try:
+            self.root.after(0, apply)
+        except:
+            apply()
+
+    def _message_info(self, title, msg):
+        try:
+            self.root.after(0, lambda: messagebox.showinfo(title, msg))
+        except:
+            messagebox.showinfo(title, msg)
+
+    def _message_error(self, title, msg):
+        try:
+            self.root.after(0, lambda: messagebox.showerror(title, msg))
+        except:
+            messagebox.showerror(title, msg)
 
     def test_ftp_connection(self):
         """Test FTP connection to Xbox 360"""
@@ -1241,12 +1266,12 @@ class XboxTUMApp:
             
             ftp.quit()
             self._log("Upload completed successfully! ✅")
-            messagebox.showinfo("Success", "TUs uploaded to Xbox 360 successfully!")
+            self._message_info("Success", "TUs uploaded to Xbox 360 successfully!")
             
         except Exception as e:
             error_msg = f"Upload failed: {e}"
             self._log(error_msg)
-            messagebox.showerror("Upload Error", error_msg)
+            self._message_error("Upload Error", error_msg)
 
     def _upload_usb_structure(self, ftp, usb_path):
         """Upload from USB_Xbox360 structure"""
@@ -1370,11 +1395,12 @@ class XboxTUMApp:
             import os
             
             # Path to the extractor script
-            extractor_path = os.path.join("addons", "x360_extractor_gui.py")
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            extractor_path = os.path.join(base_dir, "addons", "x360_extractor_gui.py")
             
             # Check if the script exists
             if not os.path.exists(extractor_path):
-                messagebox.showerror("Error", f"ISO Extractor not found at:\n{extractor_path}\n\nPlease ensure the addon is installed.")
+                self._message_error("Error", f"ISO Extractor not found at:\n{extractor_path}\n\nPlease ensure the addon is installed.")
                 return
             
             self._log("Launching ISO Extractor addon...")

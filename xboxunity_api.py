@@ -6,12 +6,14 @@ from urllib.parse import quote
 BASE_URL = "https://xboxunity.net/Api"
 WEB_BASE_URL = "https://xboxunity.net"
 RESOURCES_URL = "https://xboxunity.net/Resources/Lib"
+# Reuse a single session to keep connections alive and improve performance
+_session = requests.Session()
 
 def probar_conectividad():
     """Test basic connectivity with XboxUnity"""
     try:
         print("[INFO] Testing connectivity with XboxUnity...")
-        r = requests.get("https://xboxunity.net", timeout=10)
+        r = _session.get("https://xboxunity.net", timeout=10)
         if r.status_code == 200:
             print("[INFO] Connectivity with XboxUnity: OK")
             return True
@@ -36,7 +38,7 @@ def login_xboxunity(usuario, contrasena):
     
     try:
         print(f"[INFO] Attempting to connect to XboxUnity: {url}")
-        r = requests.post(url, data=datos, headers=headers, timeout=30)
+        r = _session.post(url, data=datos, headers=headers, timeout=30)
         print(f"[INFO] Server response: {r.status_code}")
         
         if r.status_code == 200:
@@ -92,7 +94,7 @@ def buscar_tus_con_endpoint_real(title_id, media_id=None, token=None, api_key=No
         }
         
         print(f"[INFO] Querying: {url} with TitleID: {title_id}")
-        r = requests.get(url, params=params, headers=headers, timeout=30)
+        r = _session.get(url, params=params, headers=headers, timeout=30)
         
         if r.status_code == 200:
             try:
@@ -249,7 +251,7 @@ def descargar_tu(url, destino, progreso_callback=None):
         if directorio and not os.path.exists(directorio):
             os.makedirs(directorio, exist_ok=True)
         
-        r = requests.get(url, headers=headers, stream=True, timeout=60)
+        r = _session.get(url, headers=headers, stream=True, timeout=60)
         
         if r.status_code == 200:
             # Try to get original filename from Content-Disposition header
